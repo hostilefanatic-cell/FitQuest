@@ -1,0 +1,1372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>FitQuest — Your Fitness RPG</title>
+
+<!-- PWA: iOS standalone mode -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FitQuest">
+
+<!-- PWA: Android/Chrome -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0a0e17">
+<meta name="background-color" content="#0a0e17">
+
+<!-- PWA: App icon (inline SVG as data URI) -->
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='90' fill='%230a0e17'/><text x='256' y='330' text-anchor='middle' font-size='260'>⚔</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='90' fill='%230a0e17'/><text x='256' y='330' text-anchor='middle' font-size='260'>⚔</text></svg>">
+
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<script>
+// PWA: Register inline manifest via blob URL
+const manifest = {
+  name: "FitQuest — Your Fitness RPG",
+  short_name: "FitQuest",
+  description: "Gamified fitness tracker with RPG progression",
+  start_url: "./",
+  display: "standalone",
+  orientation: "portrait",
+  background_color: "#0a0e17",
+  theme_color: "#0a0e17",
+  icons: [{
+    src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='90' fill='%230a0e17'/><text x='256' y='330' text-anchor='middle' font-size='260'>⚔</text></svg>",
+    sizes: "512x512",
+    type: "image/svg+xml",
+    purpose: "any maskable"
+  }]
+};
+const blob = new Blob([JSON.stringify(manifest)], {type:'application/json'});
+const manifestURL = URL.createObjectURL(blob);
+const link = document.createElement('link');
+link.rel = 'manifest';
+link.href = manifestURL;
+document.head.appendChild(link);
+
+// PWA: Register minimal service worker for offline support
+if ('serviceWorker' in navigator) {
+  const swCode = `
+    const CACHE = 'fitquest-v1';
+    const ASSETS = [self.location.href];
+    self.addEventListener('install', e => {
+      e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
+      self.skipWaiting();
+    });
+    self.addEventListener('activate', e => {
+      e.waitUntil(clients.claim());
+    });
+    self.addEventListener('fetch', e => {
+      e.respondWith(
+        fetch(e.request).catch(() => caches.match(e.request))
+      );
+    });
+  `;
+  const swBlob = new Blob([swCode], {type:'application/javascript'});
+  const swURL = URL.createObjectURL(swBlob);
+  navigator.serviceWorker.register(swURL).catch(() => {});
+}
+</script>
+<style>
+:root {
+  --bg: #0a0e17;
+  --surface: #121a2b;
+  --surface2: #1a2540;
+  --border: #243050;
+  --text: #e0e6f0;
+  --text-dim: #7a8baa;
+  --accent: #00e5a0;
+  --accent-glow: rgba(0,229,160,0.25);
+  --xp-bar: linear-gradient(90deg, #00e5a0, #00c9ff);
+  --streak: #ff6b35;
+  --streak-glow: rgba(255,107,53,0.3);
+  --hp: #ff4d6a;
+  --hp-glow: rgba(255,77,106,0.25);
+  --gold: #ffd700;
+  --gold-glow: rgba(255,215,0,0.25);
+  --phase1: #00e5a0;
+  --phase2: #00c9ff;
+  --phase3: #b366ff;
+  --phase4: #ff6b35;
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Outfit', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 20% 0%, rgba(0,229,160,0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 100%, rgba(0,201,255,0.05) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.app { max-width: 900px; margin: 0 auto; padding: 16px; padding-top: calc(16px + env(safe-area-inset-top)); padding-bottom: calc(16px + env(safe-area-inset-bottom)); position: relative; z-index: 1; }
+
+/* Header */
+.header {
+  text-align: center;
+  padding: 32px 0 16px;
+}
+.header h1 {
+  font-family: 'Chakra Petch', sans-serif;
+  font-size: 2.2rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #00e5a0, #00c9ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: 2px;
+}
+.header .subtitle {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  margin-top: 4px;
+  letter-spacing: 1px;
+}
+
+/* Stats Row */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 20px 0;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 10px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.stat-card:hover { transform: translateY(-2px); }
+.stat-card .stat-icon { font-size: 1.4rem; margin-bottom: 4px; }
+.stat-card .stat-value {
+  font-family: 'Chakra Petch', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+.stat-card .stat-label {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-top: 2px;
+}
+.stat-card.xp .stat-value { color: var(--accent); }
+.stat-card.xp { box-shadow: inset 0 -2px 0 var(--accent); }
+.stat-card.streak .stat-value { color: var(--streak); }
+.stat-card.streak { box-shadow: inset 0 -2px 0 var(--streak); }
+.stat-card.level .stat-value { color: var(--gold); }
+.stat-card.level { box-shadow: inset 0 -2px 0 var(--gold); }
+.stat-card.total .stat-value { color: var(--phase2); }
+.stat-card.total { box-shadow: inset 0 -2px 0 var(--phase2); }
+
+/* XP Progress Bar */
+.xp-bar-container {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.xp-bar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+}
+.xp-bar-header .phase-label {
+  font-family: 'Chakra Petch', sans-serif;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+.xp-bar-track {
+  height: 14px;
+  background: var(--bg);
+  border-radius: 7px;
+  overflow: hidden;
+  position: relative;
+}
+.xp-bar-fill {
+  height: 100%;
+  background: var(--xp-bar);
+  border-radius: 7px;
+  transition: width 0.8s cubic-bezier(0.22,1,0.36,1);
+  position: relative;
+}
+.xp-bar-fill::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0;
+  width: 30px; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3));
+  border-radius: 7px;
+}
+
+/* Navigation Tabs */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 4px;
+  border: 1px solid var(--border);
+}
+.tab {
+  flex: 1;
+  padding: 10px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s;
+  text-align: center;
+}
+.tab.active {
+  background: var(--surface2);
+  color: var(--accent);
+  font-weight: 600;
+}
+.tab:hover:not(.active) { color: var(--text); }
+
+/* Panels */
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* Today's Workout Panel */
+.energy-select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.energy-select h3 {
+  font-size: 0.85rem;
+  margin-bottom: 10px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.energy-options {
+  display: flex;
+  gap: 8px;
+}
+.energy-btn {
+  flex: 1;
+  padding: 12px 8px;
+  border: 2px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.8rem;
+  text-align: center;
+  transition: all 0.2s;
+}
+.energy-btn:hover { border-color: var(--accent); }
+.energy-btn.selected {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+  color: var(--accent);
+  font-weight: 600;
+}
+.energy-btn .emoji { font-size: 1.3rem; display: block; margin-bottom: 4px; }
+
+.workout-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 12px;
+}
+.workout-card h3 {
+  font-family: 'Chakra Petch', sans-serif;
+  font-size: 1rem;
+  margin-bottom: 4px;
+}
+.workout-card .workout-meta {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+}
+.workout-card .workout-meta span {
+  margin-right: 12px;
+}
+
+.exercise-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.exercise-check {
+  width: 22px; height: 22px;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+  transition: all 0.2s;
+  background: var(--bg);
+}
+.exercise-check.done {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+.exercise-check.done::after { content: '✓'; font-size: 0.75rem; font-weight: 700; }
+.exercise-info { flex: 1; }
+.exercise-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-bottom: 2px;
+}
+.exercise-detail {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+.exercise-xp {
+  font-family: 'Chakra Petch', sans-serif;
+  font-size: 0.75rem;
+  color: var(--accent);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.complete-workout-btn {
+  width: 100%;
+  padding: 16px;
+  border: none;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, #00e5a0, #00c9ff);
+  color: var(--bg);
+  font-family: 'Chakra Petch', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: all 0.3s;
+  margin-top: 8px;
+  position: relative;
+  overflow: hidden;
+}
+.complete-workout-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px var(--accent-glow);
+}
+.complete-workout-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+.complete-workout-btn.completed {
+  background: var(--surface2);
+  color: var(--accent);
+  border: 2px solid var(--accent);
+}
+
+/* Tips section */
+.tips-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.tips-card h3 {
+  font-family: 'Chakra Petch', sans-serif;
+  font-size: 0.9rem;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tip-item {
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+.tip-item:first-of-type { border-top: none; }
+.tip-item strong { color: var(--accent); font-weight: 600; }
+.tip-item .warning { color: var(--hp); }
+.tip-item .info { color: var(--phase2); }
+
+/* Phase roadmap */
+.roadmap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.phase-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  position: relative;
+  overflow: hidden;
+}
+.phase-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+}
+.phase-card.p1::before { background: var(--phase1); }
+.phase-card.p2::before { background: var(--phase2); }
+.phase-card.p3::before { background: var(--phase3); }
+.phase-card.p4::before { background: var(--phase4); }
+.phase-card.current { border-color: var(--accent); box-shadow: 0 0 20px var(--accent-glow); }
+.phase-card.locked { opacity: 0.5; }
+.phase-card h3 {
+  font-family: 'Chakra Petch', sans-serif;
+  font-size: 0.95rem;
+  margin-bottom: 4px;
+}
+.phase-card .phase-weeks {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.phase-card p {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+.phase-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-left: 8px;
+}
+.badge-active { background: var(--accent-glow); color: var(--accent); }
+.badge-locked { background: rgba(122,139,170,0.15); color: var(--text-dim); }
+.badge-done { background: var(--gold-glow); color: var(--gold); }
+
+/* Badges */
+.badges-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.badge-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 10px;
+  text-align: center;
+  transition: all 0.3s;
+}
+.badge-card.earned {
+  border-color: var(--gold);
+  box-shadow: 0 0 15px var(--gold-glow);
+}
+.badge-card.earned .badge-icon { filter: none; }
+.badge-card .badge-icon {
+  font-size: 2rem;
+  margin-bottom: 6px;
+  filter: grayscale(1) opacity(0.3);
+  transition: filter 0.3s;
+}
+.badge-card .badge-name {
+  font-size: 0.72rem;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.badge-card .badge-req {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+}
+
+/* History Calendar */
+.calendar-month {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.calendar-month h3 {
+  text-align: center;
+  font-family: 'Chakra Petch', sans-serif;
+  font-size: 0.9rem;
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.cal-nav {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cal-nav:hover { border-color: var(--accent); color: var(--accent); }
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.cal-header {
+  text-align: center;
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  padding: 4px 0;
+  font-weight: 600;
+}
+.cal-day {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  border-radius: 6px;
+  color: var(--text-dim);
+  position: relative;
+}
+.cal-day.active { color: var(--text); }
+.cal-day.today { border: 1px solid var(--accent); color: var(--accent); font-weight: 600; }
+.cal-day.done {
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+.cal-day.rest {
+  background: var(--surface2);
+  color: var(--text-dim);
+}
+.cal-day.empty { visibility: hidden; }
+
+/* Section headers */
+.section-header {
+  font-family: 'Chakra Petch', sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 20px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Toast / XP Popup */
+.toast {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: var(--surface2);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  padding: 12px 24px;
+  border-radius: var(--radius);
+  font-family: 'Chakra Petch', sans-serif;
+  font-weight: 700;
+  font-size: 1rem;
+  z-index: 100;
+  transition: transform 0.4s cubic-bezier(0.22,1,0.36,1);
+  box-shadow: 0 4px 30px var(--accent-glow);
+  pointer-events: none;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+.toast.streak-toast {
+  border-color: var(--streak);
+  color: var(--streak);
+  box-shadow: 0 4px 30px var(--streak-glow);
+}
+.toast.level-toast {
+  border-color: var(--gold);
+  color: var(--gold);
+  box-shadow: 0 4px 30px var(--gold-glow);
+}
+
+/* Rest day button */
+.rest-day-btn {
+  width: 100%;
+  padding: 12px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-dim);
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 8px;
+}
+.rest-day-btn:hover { border-color: var(--text-dim); color: var(--text); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* Reset button */
+.reset-btn {
+  display: block;
+  margin: 30px auto 20px;
+  padding: 8px 20px;
+  border: 1px solid #442020;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: #aa4444;
+  font-size: 0.72rem;
+  cursor: pointer;
+  font-family: 'Outfit', sans-serif;
+}
+.reset-btn:hover { background: #1a0808; border-color: #aa4444; }
+
+/* Confetti */
+.confetti-container {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 99;
+  overflow: hidden;
+}
+.confetti-piece {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  top: -10px;
+  animation: confettiFall 2.5s ease-in forwards;
+}
+@keyframes confettiFall {
+  0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(105vh) rotate(720deg); opacity: 0; }
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .stats-row { grid-template-columns: repeat(2, 1fr); }
+  .badges-grid { grid-template-columns: repeat(2, 1fr); }
+  .header h1 { font-size: 1.6rem; }
+  .energy-options { flex-wrap: wrap; }
+  .energy-btn { flex: 1 1 45%; }
+}
+</style>
+</head>
+<body>
+
+<div class="app" id="app"></div>
+<div class="toast" id="toast"></div>
+<div class="confetti-container" id="confetti"></div>
+
+<script>
+// ─── DATA & STATE ───
+const STORAGE_KEY = 'fitquest_data';
+
+const defaultState = () => ({
+  xp: 0,
+  level: 1,
+  streak: 0,
+  totalWorkouts: 0,
+  phase: 1,
+  phaseWorkouts: 0,
+  todayEnergy: null,
+  todayCompleted: [],
+  todayDone: false,
+  todayRest: false,
+  lastWorkoutDate: null,
+  history: {},
+  badges: [],
+  weeklyLog: []
+});
+
+let state = defaultState();
+
+function save() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) {}
+}
+function load() {
+  try {
+    const d = localStorage.getItem(STORAGE_KEY);
+    if (d) state = { ...defaultState(), ...JSON.parse(d) };
+  } catch(e) {}
+  checkStreak();
+}
+
+function todayStr() {
+  return new Date().toISOString().slice(0,10);
+}
+
+function checkStreak() {
+  const today = todayStr();
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0,10);
+  if (state.lastWorkoutDate === today) return;
+  if (state.lastWorkoutDate !== yesterday && state.lastWorkoutDate !== today) {
+    if (state.lastWorkoutDate && state.streak > 0) {
+      state.streak = 0;
+      save();
+    }
+  }
+}
+
+function isTodayDone() {
+  return state.history[todayStr()] === 'done' || state.history[todayStr()] === 'rest';
+}
+
+// ─── XP & LEVELING ───
+function xpForLevel(l) { return 80 + (l - 1) * 40; }
+function xpProgress() { return state.xp % xpForLevel(state.level); }
+function xpNeeded() { return xpForLevel(state.level); }
+
+function addXP(amount) {
+  state.xp += amount;
+  while (xpProgress() >= xpNeeded() || state.xp >= cumulativeXP(state.level + 1)) {
+    state.level++;
+    showToast(`⬆ LEVEL ${state.level}!`, 'level-toast');
+  }
+  save();
+}
+
+function cumulativeXP(targetLevel) {
+  let total = 0;
+  for (let i = 1; i < targetLevel; i++) total += xpForLevel(i);
+  return total;
+}
+
+// ─── PHASES ───
+const PHASES = [
+  { id:1, name:'Foundation Walker', weeks:'Weeks 1–3', color:'var(--phase1)', minWorkouts:15,
+    desc:'Build the daily habit. Walking on the walkpad, gentle stretches, and posture resets. The hardest part is just showing up — that\'s all you need to do.' },
+  { id:2, name:'Cardio Explorer', weeks:'Weeks 4–7', color:'var(--phase2)', minWorkouts:20,
+    desc:'Add spin bike sessions. Alternate between walkpad and cycling. Introduce light band work for back and shoulders. Your endurance is growing.' },
+  { id:3, name:'Strength Initiate', weeks:'Weeks 8–12', color:'var(--phase3)', minWorkouts:25,
+    desc:'Dumbbells join the party. Compound movements for functional strength. Back-focused exercises to fight desk posture. You\'re an athlete now.' },
+  { id:4, name:'Hybrid Warrior', weeks:'Week 13+', color:'var(--phase4)', minWorkouts:999,
+    desc:'Full variety — cardio, strength, mobility. You pick your adventure daily. The habit is locked in. This is your life now.' }
+];
+
+function getCurrentPhase() { return PHASES.find(p => p.id === state.phase); }
+
+function checkPhaseUp() {
+  const cp = getCurrentPhase();
+  if (state.phase < 4 && state.phaseWorkouts >= cp.minWorkouts) {
+    state.phase++;
+    state.phaseWorkouts = 0;
+    save();
+    showToast(`🎖 PHASE ${state.phase}: ${PHASES[state.phase-1].name}!`, 'level-toast');
+  }
+}
+
+// ─── WORKOUT GENERATORS ───
+const WARMUP = [
+  { name:'Neck Rolls', detail:'Slow circles, 5 each direction. Never force the range.', xp:3 },
+  { name:'Shoulder Shrugs', detail:'Lift shoulders to ears, hold 2s, drop. 10 reps.', xp:3 },
+  { name:'Cat-Cow Stretch', detail:'On all fours, arch and round spine. 8 slow reps. Breathe into each.', xp:4 },
+  { name:'Standing Side Bends', detail:'Reach one arm overhead, lean gently. 8 each side.', xp:3 },
+];
+
+const COOLDOWN = [
+  { name:'Child\'s Pose', detail:'Kneel, sit back on heels, arms forward on floor. Hold 30s. Breathe deep.', xp:4 },
+  { name:'Seated Spinal Twist', detail:'Sit cross-legged, twist gently each side. Hold 20s each. Exhale into the twist.', xp:3 },
+  { name:'Chest Opener Stretch', detail:'Clasp hands behind back, lift chest. Hold 20s. Counters desk hunch.', xp:3 },
+  { name:'Neck Release', detail:'Tilt ear to shoulder, gentle hand pressure. 20s each side. Never push into pain.', xp:3 },
+];
+
+function getWorkouts(energy, phase) {
+  const w = { warmup: WARMUP, main: [], cooldown: COOLDOWN };
+
+  if (phase === 1) {
+    if (energy === 'low') {
+      w.main = [
+        { name:'Walkpad — Easy Pace', detail:'10 min at comfortable speed (3–4 km/h). Just move. Music or podcast ON.', xp:15 },
+        { name:'Wall Angels', detail:'Back flat against wall, arms in "W", slide up to "Y". 8 reps. Great for upper back.', xp:8 },
+        { name:'Glute Bridges', detail:'Lie on back, feet flat, push hips up. 2×10. Activates glutes, relieves lower back.', xp:8 },
+      ];
+    } else if (energy === 'medium') {
+      w.main = [
+        { name:'Walkpad — Brisk Walk', detail:'15 min at brisk pace (5–6 km/h). Swing arms, stand tall. Light incline if you have it.', xp:20 },
+        { name:'Band Pull-Aparts', detail:'Hold band at chest, pull apart squeezing shoulder blades. 3×12.', xp:10 },
+        { name:'Dead Bug', detail:'Lie on back, arms up, knees at 90°. Lower opposite arm/leg. 2×8 each side. Core stability king.', xp:10 },
+      ];
+    } else {
+      w.main = [
+        { name:'Walkpad — Power Walk', detail:'20 min fast pace (6+ km/h). Push it! This is your cardio.', xp:25 },
+        { name:'Band Rows', detail:'Anchor band, pull to ribs. 3×12. Squeeze shoulder blades at end.', xp:12 },
+        { name:'Bodyweight Squats', detail:'Feet shoulder width, sit back, chest up. 3×10. Go only as deep as comfortable.', xp:10 },
+        { name:'Plank', detail:'Forearms on floor, body straight. Hold 20–30s. Don\'t sag the lower back!', xp:10 },
+      ];
+    }
+  } else if (phase === 2) {
+    if (energy === 'low') {
+      w.main = [
+        { name:'Spin Bike — Easy Spin', detail:'10 min, low resistance. Just keep the legs moving. Zone 1 effort.', xp:15 },
+        { name:'Band Face Pulls', detail:'Band anchored high, pull to face level. 3×12. Excellent for posture.', xp:10 },
+        { name:'Supermans', detail:'Lie face down, lift arms and legs 2 inches. Hold 3s. 2×8. Lower back strengthener.', xp:8 },
+      ];
+    } else if (energy === 'medium') {
+      w.main = [
+        { name:'Walkpad Intervals', detail:'2 min brisk / 1 min easy × 5 rounds. 15 min total. Builds fitness fast.', xp:22 },
+        { name:'Band Lateral Raises', detail:'Step on band, raise arms to sides. 3×10. Light resistance — shoulders are delicate.', xp:10 },
+        { name:'Bird-Dogs', detail:'All fours, extend opposite arm/leg. Hold 3s. 2×8 each. Core + back stability.', xp:10 },
+        { name:'Band Chest Press', detail:'Band behind back, press forward. 3×10. Good activation without heavy load.', xp:10 },
+      ];
+    } else {
+      w.main = [
+        { name:'Spin Bike — Tempo Ride', detail:'20 min: 5 min warmup, 10 min moderate resistance, 5 min cooldown. Push RPM!', xp:28 },
+        { name:'Band Rows + Pull-Aparts Superset', detail:'12 rows → 12 pull-aparts, no rest. 3 rounds. Upper back blitz.', xp:14 },
+        { name:'Bodyweight Lunges', detail:'Alternating, 3×8 each leg. Keep front knee behind toes. Hold wall if needed.', xp:10 },
+        { name:'Plank Shoulder Taps', detail:'Plank position, tap opposite shoulder. 2×8 each. Anti-rotation core work.', xp:10 },
+      ];
+    }
+  } else if (phase === 3) {
+    if (energy === 'low') {
+      w.main = [
+        { name:'Walkpad — Recovery Walk', detail:'10 min easy pace. Mobility work between sets. Keep blood flowing.', xp:12 },
+        { name:'Dumbbell Deadlift (Light)', detail:'Light weight, hinge at hips, slight knee bend. 3×8. Posterior chain wake-up.', xp:12 },
+        { name:'Dumbbell Curls', detail:'Light weight, controlled reps. 2×10. Elbows pinned to sides.', xp:8 },
+        { name:'Band Pull-Aparts', detail:'3×15. Easy on the joints, great for posture maintenance.', xp:8 },
+      ];
+    } else if (energy === 'medium') {
+      w.main = [
+        { name:'Spin Bike Warmup', detail:'5 min moderate spin. Get the blood going.', xp:8 },
+        { name:'Dumbbell Goblet Squat', detail:'Hold 1 dumbbell at chest, squat deep. 3×10. Keep chest up, heels down.', xp:15 },
+        { name:'Dumbbell Row', detail:'One arm, knee on bench/chair. 3×10 each side. SQUEEZE the shoulder blade.', xp:14 },
+        { name:'Dumbbell Overhead Press', detail:'Seated or standing, press up from shoulders. 3×8. Go lighter than you think.', xp:12 },
+        { name:'Dead Bug', detail:'3×10 each side. Slow and controlled. Core foundation.', xp:8 },
+      ];
+    } else {
+      w.main = [
+        { name:'Walkpad Intervals', detail:'1 min fast / 1 min easy × 5. Quick cardio primer.', xp:12 },
+        { name:'Dumbbell Romanian Deadlift', detail:'Moderate weight, hinge at hips. 3×10. Feel the hamstring stretch. Protect your back.', xp:16 },
+        { name:'Dumbbell Bench Press (Floor)', detail:'Lie on floor, press up. 3×10. Floor limits range = shoulder friendly.', xp:14 },
+        { name:'Dumbbell Row', detail:'3×10 each arm. Heavy-ish. Pull to hip, not armpit.', xp:14 },
+        { name:'Band Pallof Press', detail:'Anti-rotation press. 2×10 each side. Deep core work.', xp:10 },
+        { name:'Farmer\'s Walk', detail:'Heavy dumbbells, walk 30 steps. 2 rounds. Total body + grip.', xp:10 },
+      ];
+    }
+  } else {
+    if (energy === 'low') {
+      w.main = [
+        { name:'Active Recovery Walk', detail:'15 min easy walkpad. Podcast time. Guilt-free movement.', xp:15 },
+        { name:'Full Body Stretch Routine', detail:'Neck → shoulders → chest → hip flexors → hamstrings → calves. 30s each.', xp:12 },
+        { name:'Foam Roll / Lacrosse Ball', detail:'If you have one: upper back, glutes, quads. 1–2 min per area.', xp:8 },
+      ];
+    } else if (energy === 'medium') {
+      const options = [
+        [
+          { name:'Spin Bike — Hills', detail:'15 min: increase resistance every 2 min, then back down. Pyramid intervals.', xp:22 },
+          { name:'Dumbbell Goblet Squat', detail:'3×12. Deeper each week. Pause at bottom for 1s.', xp:14 },
+          { name:'Dumbbell Row', detail:'3×10 each arm. Controlled tempo: 2s up, 2s down.', xp:12 },
+          { name:'Band Rotator Cuff Work', detail:'External/internal rotations. 2×12 each. Prehab for shoulder health.', xp:8 },
+        ],
+        [
+          { name:'Walkpad Incline Power Walk', detail:'15 min at max incline, moderate speed. Brutal and effective.', xp:22 },
+          { name:'Dumbbell Lunges', detail:'3×8 each leg. Step forward, lower with control.', xp:14 },
+          { name:'Dumbbell Overhead Press', detail:'3×10. Strict form, no leg drive.', xp:12 },
+          { name:'Dead Bug', detail:'3×10 each side. Fingertips to sky, press low back into floor.', xp:8 },
+        ]
+      ];
+      w.main = options[Math.floor(Math.random() * options.length)];
+    } else {
+      const options = [
+        [
+          { name:'Spin Bike HIIT', detail:'30s all-out / 30s easy × 10 rounds. 10 min of pure effort.', xp:25 },
+          { name:'Dumbbell Deadlift', detail:'3×10. Moderate-heavy. Hinge, brace, lift.', xp:16 },
+          { name:'Dumbbell Floor Press', detail:'3×10. Control the negative.', xp:14 },
+          { name:'Dumbbell Row Superset', detail:'10 rows + 10 band pull-aparts. 3 rounds.', xp:14 },
+          { name:'Plank to Pushup', detail:'Forearm plank → push up to hands → back down. 2×6.', xp:10 },
+        ],
+        [
+          { name:'Walkpad Sprint Intervals', detail:'30s max speed / 60s walk × 8. Hang on!', xp:25 },
+          { name:'Dumbbell Goblet Squat', detail:'3×12. Pause at bottom. Heavy as form allows.', xp:16 },
+          { name:'Dumbbell Push Press', detail:'3×8. Use legs to initiate. Feel the power.', xp:14 },
+          { name:'Dumbbell Row', detail:'3×10 each. Heavier than last week.', xp:14 },
+          { name:'Farmer\'s Walk', detail:'Heavy dumbbells, 40 steps. 3 rounds. Trap builder.', xp:10 },
+        ]
+      ];
+      w.main = options[Math.floor(Math.random() * options.length)];
+    }
+  }
+  return w;
+}
+
+// ─── BADGES ───
+const BADGE_DEFS = [
+  { id:'first', icon:'🌱', name:'First Step', req:'Complete 1st workout', check: s => s.totalWorkouts >= 1 },
+  { id:'wk1', icon:'📅', name:'Week One', req:'7-day streak', check: s => s.streak >= 7 },
+  { id:'ten', icon:'🔟', name:'Double Digits', req:'10 workouts total', check: s => s.totalWorkouts >= 10 },
+  { id:'streak14', icon:'🔥', name:'Fortnight Fire', req:'14-day streak', check: s => s.streak >= 14 },
+  { id:'phase2', icon:'🚴', name:'Cardio Unlocked', req:'Reach Phase 2', check: s => s.phase >= 2 },
+  { id:'twentyfive', icon:'💪', name:'Quarter Century', req:'25 workouts total', check: s => s.totalWorkouts >= 25 },
+  { id:'phase3', icon:'🏋️', name:'Strength Unlocked', req:'Reach Phase 3', check: s => s.phase >= 3 },
+  { id:'streak30', icon:'⚡', name:'Monthly Monster', req:'30-day streak', check: s => s.streak >= 30 },
+  { id:'fifty', icon:'👑', name:'Half Century', req:'50 workouts total', check: s => s.totalWorkouts >= 50 },
+  { id:'phase4', icon:'🏆', name:'Hybrid Warrior', req:'Reach Phase 4', check: s => s.phase >= 4 },
+  { id:'streak60', icon:'💎', name:'Diamond Discipline', req:'60-day streak', check: s => s.streak >= 60 },
+  { id:'hundred', icon:'🌟', name:'Centurion', req:'100 workouts total', check: s => s.totalWorkouts >= 100 },
+];
+
+function checkBadges() {
+  BADGE_DEFS.forEach(b => {
+    if (!state.badges.includes(b.id) && b.check(state)) {
+      state.badges.push(b.id);
+      showToast(`🏅 Badge: ${b.name}!`, 'level-toast');
+    }
+  });
+  save();
+}
+
+// ─── UI ───
+let activeTab = 'today';
+let calMonth = new Date().getMonth();
+let calYear = new Date().getFullYear();
+let currentWorkout = null;
+
+function showToast(msg, cls='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + cls;
+  setTimeout(() => t.className = 'toast', 2500);
+}
+
+function fireConfetti() {
+  const c = document.getElementById('confetti');
+  const colors = ['#00e5a0','#00c9ff','#ffd700','#ff6b35','#b366ff','#ff4d6a'];
+  for (let i = 0; i < 40; i++) {
+    const p = document.createElement('div');
+    p.className = 'confetti-piece';
+    p.style.left = Math.random() * 100 + '%';
+    p.style.background = colors[Math.floor(Math.random() * colors.length)];
+    p.style.animationDelay = Math.random() * 0.8 + 's';
+    p.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+    p.style.width = (4 + Math.random() * 8) + 'px';
+    p.style.height = (4 + Math.random() * 8) + 'px';
+    c.appendChild(p);
+  }
+  setTimeout(() => c.innerHTML = '', 3000);
+}
+
+function render() {
+  const today = todayStr();
+  const doneTdy = state.history[today] === 'done';
+  const restTdy = state.history[today] === 'rest';
+  const phase = getCurrentPhase();
+  const xpProg = state.xp - cumulativeXP(state.level);
+  const xpNeed = xpForLevel(state.level);
+  const pct = Math.min(100, (xpProg / xpNeed) * 100);
+
+  let html = `
+    <div class="header">
+      <h1>⚔ FITQUEST</h1>
+      <div class="subtitle">YOUR BODY IS THE RPG</div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card level">
+        <div class="stat-icon">⭐</div>
+        <div class="stat-value">${state.level}</div>
+        <div class="stat-label">Level</div>
+      </div>
+      <div class="stat-card xp">
+        <div class="stat-icon">✦</div>
+        <div class="stat-value">${state.xp}</div>
+        <div class="stat-label">Total XP</div>
+      </div>
+      <div class="stat-card streak">
+        <div class="stat-icon">🔥</div>
+        <div class="stat-value">${state.streak}</div>
+        <div class="stat-label">Streak</div>
+      </div>
+      <div class="stat-card total">
+        <div class="stat-icon">💪</div>
+        <div class="stat-value">${state.totalWorkouts}</div>
+        <div class="stat-label">Workouts</div>
+      </div>
+    </div>
+
+    <div class="xp-bar-container">
+      <div class="xp-bar-header">
+        <span class="phase-label" style="color:${phase.color}">⬢ ${phase.name}</span>
+        <span>${xpProg} / ${xpNeed} XP to Level ${state.level + 1}</span>
+      </div>
+      <div class="xp-bar-track">
+        <div class="xp-bar-fill" style="width:${pct}%"></div>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab ${activeTab==='today'?'active':''}" onclick="switchTab('today')">⚔ Today</button>
+      <button class="tab ${activeTab==='plan'?'active':''}" onclick="switchTab('plan')">🗺 Phases</button>
+      <button class="tab ${activeTab==='badges'?'active':''}" onclick="switchTab('badges')">🏅 Badges</button>
+      <button class="tab ${activeTab==='history'?'active':''}" onclick="switchTab('history')">📅 History</button>
+      <button class="tab ${activeTab==='tips'?'active':''}" onclick="switchTab('tips')">📋 Safety</button>
+    </div>
+  `;
+
+  // ── TODAY TAB ──
+  html += `<div class="panel ${activeTab==='today'?'active':''}">`;
+
+  if (doneTdy) {
+    html += `
+      <div class="workout-card" style="text-align:center;padding:30px;">
+        <div style="font-size:2.5rem;margin-bottom:10px;">✅</div>
+        <h3 style="color:var(--accent);">Workout Complete!</h3>
+        <p style="color:var(--text-dim);font-size:0.82rem;margin-top:6px;">
+          You showed up today. That's the whole game. Come back tomorrow, warrior.
+        </p>
+      </div>`;
+  } else if (restTdy) {
+    html += `
+      <div class="workout-card" style="text-align:center;padding:30px;">
+        <div style="font-size:2.5rem;margin-bottom:10px;">😴</div>
+        <h3 style="color:var(--text-dim);">Rest Day — Logged</h3>
+        <p style="color:var(--text-dim);font-size:0.82rem;margin-top:6px;">
+          Recovery is part of training. Your muscles grow while you rest. Smart move.
+        </p>
+      </div>`;
+  } else if (!state.todayEnergy) {
+    html += `
+      <div class="energy-select">
+        <h3>How's your energy right now?</h3>
+        <p style="font-size:0.75rem;color:var(--text-dim);margin-bottom:12px;">Be honest — low energy workouts still earn XP. Showing up > going hard.</p>
+        <div class="energy-options">
+          <button class="energy-btn" onclick="pickEnergy('low')">
+            <span class="emoji">🐢</span>
+            Low<br><span style="font-size:0.65rem;color:var(--text-dim)">~15 min</span>
+          </button>
+          <button class="energy-btn" onclick="pickEnergy('medium')">
+            <span class="emoji">🚶</span>
+            Medium<br><span style="font-size:0.65rem;color:var(--text-dim)">~20 min</span>
+          </button>
+          <button class="energy-btn" onclick="pickEnergy('high')">
+            <span class="emoji">🔥</span>
+            High<br><span style="font-size:0.65rem;color:var(--text-dim)">~30 min</span>
+          </button>
+        </div>
+      </div>
+      <button class="rest-day-btn" onclick="logRest()">😴 Log Rest Day (no streak break if ≤1/week)</button>
+    `;
+  } else {
+    if (!currentWorkout) currentWorkout = getWorkouts(state.todayEnergy, state.phase);
+    const w = currentWorkout;
+    const allExercises = [...w.warmup, ...w.main, ...w.cooldown];
+    const allDone = allExercises.every((_, i) => state.todayCompleted.includes(i));
+
+    html += `<div class="workout-card">
+      <h3 style="color:var(--text-dim);font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;">🔄 Warm-Up — Never Skip This</h3>`;
+    w.warmup.forEach((ex, i) => {
+      const done = state.todayCompleted.includes(i);
+      html += exerciseHTML(ex, i, done);
+    });
+    html += `</div>`;
+
+    const offset1 = w.warmup.length;
+    html += `<div class="workout-card">
+      <h3>⚔ Main Workout <span style="font-size:0.75rem;color:var(--text-dim);font-weight:400;margin-left:6px;">${state.todayEnergy} energy · Phase ${state.phase}</span></h3>`;
+    w.main.forEach((ex, i) => {
+      const idx = offset1 + i;
+      const done = state.todayCompleted.includes(idx);
+      html += exerciseHTML(ex, idx, done);
+    });
+    html += `</div>`;
+
+    const offset2 = offset1 + w.main.length;
+    html += `<div class="workout-card">
+      <h3 style="color:var(--text-dim);font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;">🧘 Cool-Down — Protects Your Back</h3>`;
+    w.cooldown.forEach((ex, i) => {
+      const idx = offset2 + i;
+      const done = state.todayCompleted.includes(idx);
+      html += exerciseHTML(ex, idx, done);
+    });
+    html += `</div>`;
+
+    const totalXP = allExercises.reduce((s,e) => s + e.xp, 0);
+    html += `
+      <button class="complete-workout-btn ${allDone?'':'disabled'}" ${allDone?'':'disabled'} onclick="completeWorkout(${totalXP})">
+        COMPLETE WORKOUT — EARN ${totalXP} XP ⚡
+      </button>
+      <button class="rest-day-btn" onclick="resetToday()" style="margin-top:8px;">↩ Change energy level</button>
+    `;
+  }
+  html += `</div>`;
+
+  // ── PHASES TAB ──
+  html += `<div class="panel ${activeTab==='plan'?'active':''}">
+    <div class="section-header">🗺 Your Progression Roadmap</div>
+    <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:16px;line-height:1.5;">
+      Each phase unlocks after enough workouts. No rushing — consistency beats intensity every time.
+      Phase transitions happen automatically. Your body adapts, and the program adapts with you.
+    </p>
+    <div class="roadmap">`;
+  PHASES.forEach(p => {
+    const isCurrent = p.id === state.phase;
+    const isLocked = p.id > state.phase;
+    const isDone = p.id < state.phase;
+    let badge = '';
+    if (isCurrent) badge = `<span class="phase-badge badge-active">CURRENT — ${state.phaseWorkouts}/${p.minWorkouts}</span>`;
+    else if (isDone) badge = `<span class="phase-badge badge-done">COMPLETE</span>`;
+    else badge = `<span class="phase-badge badge-locked">LOCKED</span>`;
+
+    html += `<div class="phase-card p${p.id} ${isCurrent?'current':''} ${isLocked?'locked':''}">
+      <h3 style="color:${p.color}">Phase ${p.id}: ${p.name} ${badge}</h3>
+      <div class="phase-weeks">${p.weeks} · ${p.id<4 ? p.minWorkouts+' workouts to advance' : 'Ongoing'}</div>
+      <p>${p.desc}</p>
+    </div>`;
+  });
+  html += `</div></div>`;
+
+  // ── BADGES TAB ──
+  html += `<div class="panel ${activeTab==='badges'?'active':''}">
+    <div class="section-header">🏅 Achievement Wall</div>
+    <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:16px;">Earned: ${state.badges.length} / ${BADGE_DEFS.length}</p>
+    <div class="badges-grid">`;
+  BADGE_DEFS.forEach(b => {
+    const earned = state.badges.includes(b.id);
+    html += `<div class="badge-card ${earned?'earned':''}">
+      <div class="badge-icon">${b.icon}</div>
+      <div class="badge-name">${b.name}</div>
+      <div class="badge-req">${b.req}</div>
+    </div>`;
+  });
+  html += `</div></div>`;
+
+  // ── HISTORY TAB ──
+  html += `<div class="panel ${activeTab==='history'?'active':''}">
+    <div class="section-header">📅 Workout Calendar</div>`;
+  html += renderCalendar();
+  html += `</div>`;
+
+  // ── TIPS TAB ──
+  html += `<div class="panel ${activeTab==='tips'?'active':''}">
+    <div class="section-header">📋 Your Personal Safety Guide</div>
+
+    <div class="tips-card">
+      <h3>🔴 Your Back & Neck — Non-Negotiables</h3>
+      <div class="tip-item"><strong class="warning">⚠ STOP any exercise that causes sharp pain.</strong> Dull soreness during/after is normal. Sharp, shooting, or electric pain is a red flag — stop immediately.</div>
+      <div class="tip-item"><strong>Lower back:</strong> Keep a neutral spine during all movements. "Neutral" = slight natural curve, not flat, not arched. When lifting anything (dumbbells, groceries, your daughter), brace your core first — imagine someone's about to poke your stomach.</div>
+      <div class="tip-item"><strong>Upper back / traps:</strong> Desk work tightens your chest and weakens your upper back. Band pull-aparts and rows are your medicine. Do a few every hour at your desk — even 5 reps help.</div>
+      <div class="tip-item"><strong>Neck stiffness:</strong> Never crank your neck. Gentle movements only — slow rolls, ear-to-shoulder tilts. If you look at a monitor all day, set it at eye level. Every 30 min, look up at the ceiling for 5 seconds.</div>
+      <div class="tip-item"><strong>Posture reset (do this NOW):</strong> Stand up. Roll shoulders back 5×. Squeeze shoulder blades together 5s. Tuck chin slightly (double chin position). Release. That's your reset — do it every hour.</div>
+    </div>
+
+    <div class="tips-card">
+      <h3>🧠 The ADHD-Friendly Approach</h3>
+      <div class="tip-item"><strong>Rule #1:</strong> If you can't do the full workout, do the warm-up. That's it. If you do just the warm-up, it counts. Open the app, check boxes, earn XP.</div>
+      <div class="tip-item"><strong>Lowest viable dose:</strong> "Low energy" workouts exist for a reason. A 10-min walk on the walkpad beats skipping the day entirely. Your streak is more valuable than any single workout.</div>
+      <div class="tip-item"><strong>Stack the habit:</strong> Tie workouts to an existing routine. After putting your daughter down? After morning chai? Before shower? Pick one anchor and defend it.</div>
+      <div class="tip-item"><strong>Dopamine bait:</strong> Watch a show, listen to a podcast, or put on music ONLY during workouts. Make it the fun time, not the punishment time.</div>
+      <div class="tip-item"><strong>Variable schedule hack:</strong> Energy level selection means the plan adapts to YOUR day. Baby had a rough night? Pick 🐢. Got a free 30 min? Pick 🔥. No planning needed.</div>
+      <div class="tip-item"><strong>Don't break the chain:</strong> Rest days are fine (1/week without streak penalty). But the XP number going up and the streak counter are designed for your brain. Protect them.</div>
+    </div>
+
+    <div class="tips-card">
+      <h3>⚙ Equipment Form Cues</h3>
+      <div class="tip-item"><strong>Walkpad:</strong> Stand tall, eyes forward (not at phone), swing arms naturally. Start at 3 km/h and increase gradually. Don't hold the rails once you're comfortable.</div>
+      <div class="tip-item"><strong>Spin bike:</strong> Seat height = hip level when standing next to bike. Slight knee bend at bottom of pedal stroke. Don't death-grip the handlebars — light touch.</div>
+      <div class="tip-item"><strong>Dumbbells:</strong> Start lighter than you think you need. If you can't do 8 reps with good form, it's too heavy. Increase weight only when 12 reps feel easy. Wrists stay neutral (not bent).</div>
+      <div class="tip-item"><strong>Bands:</strong> Control both directions — the stretch AND the return. Slow eccentrics build more strength. Never let bands snap back. Check for tears before every use.</div>
+    </div>
+
+    <div class="tips-card">
+      <h3>📐 The Golden Rules</h3>
+      <div class="tip-item"><strong>Breathe:</strong> Exhale on effort, inhale on release. Never hold your breath under load.</div>
+      <div class="tip-item"><strong>Hydrate:</strong> Drink water before, during, after. Not chai. Water.</div>
+      <div class="tip-item"><strong>Warm up ALWAYS:</strong> The warm-up section isn't optional. Cold muscles + sudden load = injury. Especially important for your back.</div>
+      <div class="tip-item"><strong>Cool down ALWAYS:</strong> Stretching after exercise is when you actually gain flexibility. It also prevents next-day stiffness for your neck and back.</div>
+      <div class="tip-item"><strong>Progressive overload:</strong> The plan handles this automatically through phases. Don't skip ahead. Your connective tissues (tendons, ligaments) adapt slower than muscles — give them time.</div>
+      <div class="tip-item"><strong>Sleep:</strong> Your muscles don't grow during workouts — they grow during sleep. This matters doubly with a young kid. If you're running on <5 hours, pick low energy. Recovery IS training.</div>
+      <div class="tip-item"><strong>When in doubt, see a physio:</strong> If your back pain persists or worsens despite 2+ weeks of consistent gentle exercise, consult a physiotherapist. This plan is general guidance, not a medical prescription.</div>
+    </div>
+  </div>`;
+
+  // Reset button
+  html += `<button class="reset-btn" onclick="resetAll()">Reset All Progress</button>`;
+
+  document.getElementById('app').innerHTML = html;
+}
+
+function exerciseHTML(ex, idx, done) {
+  return `<div class="exercise-item">
+    <div class="exercise-check ${done?'done':''}" onclick="toggleExercise(${idx})"></div>
+    <div class="exercise-info">
+      <div class="exercise-name" style="${done?'text-decoration:line-through;opacity:0.5':''}">${ex.name}</div>
+      <div class="exercise-detail">${ex.detail}</div>
+    </div>
+    <div class="exercise-xp">+${ex.xp} XP</div>
+  </div>`;
+}
+
+function renderCalendar() {
+  const d = new Date(calYear, calMonth, 1);
+  const monthName = d.toLocaleString('default', { month:'long', year:'numeric' });
+  const startDay = d.getDay();
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const today = todayStr();
+
+  let html = `<div class="calendar-month">
+    <h3>
+      <button class="cal-nav" onclick="calPrev()">◀</button>
+      ${monthName}
+      <button class="cal-nav" onclick="calNext()">▶</button>
+    </h3>
+    <div class="cal-grid">`;
+
+  ['S','M','T','W','T','F','S'].forEach(d => {
+    html += `<div class="cal-header">${d}</div>`;
+  });
+
+  for (let i = 0; i < startDay; i++) html += `<div class="cal-day empty"></div>`;
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const ds = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const isToday = ds === today;
+    const status = state.history[ds];
+    let cls = 'cal-day active';
+    if (isToday) cls += ' today';
+    if (status === 'done') cls += ' done';
+    else if (status === 'rest') cls += ' rest';
+    html += `<div class="${cls}">${day}</div>`;
+  }
+
+  html += `</div></div>`;
+  return html;
+}
+
+// ─── ACTIONS ───
+function switchTab(t) { activeTab = t; render(); }
+
+function pickEnergy(e) {
+  state.todayEnergy = e;
+  state.todayCompleted = [];
+  currentWorkout = null;
+  render();
+}
+
+function toggleExercise(idx) {
+  if (state.todayCompleted.includes(idx)) {
+    state.todayCompleted = state.todayCompleted.filter(i => i !== idx);
+  } else {
+    state.todayCompleted.push(idx);
+    showToast(`+XP ⚡`, '');
+  }
+  render();
+}
+
+function completeWorkout(totalXP) {
+  const today = todayStr();
+  state.history[today] = 'done';
+  state.totalWorkouts++;
+  state.phaseWorkouts++;
+
+  // Streak logic
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0,10);
+  if (state.lastWorkoutDate === yesterday || state.lastWorkoutDate === today || state.streak === 0) {
+    state.streak++;
+  }
+  state.lastWorkoutDate = today;
+
+  addXP(totalXP);
+
+  // Streak bonus
+  if (state.streak > 0 && state.streak % 7 === 0) {
+    addXP(50);
+    setTimeout(() => showToast(`🔥 ${state.streak}-DAY STREAK! +50 BONUS XP`, 'streak-toast'), 1500);
+  }
+
+  state.todayEnergy = null;
+  state.todayCompleted = [];
+  currentWorkout = null;
+
+  checkPhaseUp();
+  checkBadges();
+  save();
+
+  fireConfetti();
+  showToast(`+${totalXP} XP EARNED! 🎉`, '');
+
+  setTimeout(render, 300);
+}
+
+function logRest() {
+  const today = todayStr();
+  // Count rest days this week (last 7 days)
+  let restCount = 0;
+  for (let i = 1; i <= 7; i++) {
+    const d = new Date(Date.now() - i * 86400000).toISOString().slice(0,10);
+    if (state.history[d] === 'rest') restCount++;
+  }
+  state.history[today] = 'rest';
+  if (restCount >= 1) {
+    // More than 1 rest day this week = streak breaks
+    showToast('😴 Rest logged. Streak paused (2+ rest days this week).', '');
+  } else {
+    // First rest day this week — streak preserved
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0,10);
+    if (state.lastWorkoutDate === yesterday || state.streak === 0) {
+      // Don't increment streak but don't break it either
+    }
+    state.lastWorkoutDate = today;
+    showToast('😴 Rest day logged. Streak safe!', '');
+  }
+  save();
+  render();
+}
+
+function resetToday() {
+  state.todayEnergy = null;
+  state.todayCompleted = [];
+  currentWorkout = null;
+  render();
+}
+
+function calPrev() { calMonth--; if(calMonth<0){calMonth=11;calYear--;} render(); }
+function calNext() { calMonth++; if(calMonth>11){calMonth=0;calYear++;} render(); }
+
+function resetAll() {
+  if (confirm('Reset ALL progress? XP, streak, badges — everything goes. Are you sure?')) {
+    if (confirm('Seriously — this cannot be undone. Last chance.')) {
+      state = defaultState();
+      save();
+      currentWorkout = null;
+      render();
+      showToast('Progress reset. New game. 🎮', '');
+    }
+  }
+}
+
+// ─── INIT ───
+load();
+render();
+</script>
+</body>
+</html>
